@@ -1,65 +1,123 @@
-# lambda-approval
+# Step Functions com Callback Pattern e DynamoDB
 
-This project uses Quarkus, the Supersonic Subatomic Java Framework.
+Este projeto implementa uma solução usando **AWS Step Functions**, **SQS**, **Lambda** e **DynamoDB**. O fluxo consiste em:
 
-If you want to learn more about Quarkus, please visit its website: https://quarkus.io/ .
+1. **Step Functions** envia uma mensagem para o **SQS** com detalhes da execução.
+2. Uma **Lambda** consome a mensagem do SQS e salva os dados no **DynamoDB**.
+3. Uma aplicação externa (no EC2) consulta o DynamoDB e envia o `taskToken` de volta para a Step Functions.
 
-## Running the application in dev mode
+---
+## Diagrama
+![](../prints/human-approval-human-approval-sqs-sns.drawio.png)
 
-You can run your application in dev mode that enables live coding using:
-```shell script
-./mvnw compile quarkus:dev
+## **Arquitetura da Solução**
+
+### **Policy**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage",
+        "sqs:GetQueueAttributes"
+      ],
+      "Resource": "arn:aws:sqs:us-east-1:AccountID:MyQueueName"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:PutItem"
+      ],
+      "Resource": "arn:aws:dynamodb:us-east-1:AccountID:table/MyTableName"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "states:SendTaskSuccess",
+        "states:SendTaskFailure"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
 ```
 
-> **_NOTE:_**  Quarkus now ships with a Dev UI, which is available in dev mode only at http://localhost:8080/q/dev/.
+### **Componentes**
 
-## Packaging and running the application
+1. **Step Functions**:
+    - Orquestra o fluxo.
+    - Envia mensagens para o SQS com `transactionId`, `taskToken`, `startTime` e `orderId`.
+    - Aguarda o callback da Lambda.
 
-The application can be packaged using:
-```shell script
-./mvnw package
+2. **SQS**:
+    - Armazena as mensagens enviadas pela Step Functions.
+    - A Lambda consome as mensagens da fila.
+
+3. **Lambda**:
+    - Processa as mensagens do SQS.
+    - Salva os dados no DynamoDB.
+
+4. **DynamoDB**:
+    - Armazena os registros processados pela Lambda.
+    - Contém os seguintes atributos:
+        - `orderId`: ID do pedido.
+        - `startTime`: Data de início do fluxo.
+        - `transactionId`: ID da execução da Step Functions.
+        - `taskToken`: Token de callback.
+        - `status`: Status do processamento.
+
+5. **Aplicação no EC2**:
+    - Expõe endpoints REST para consultar o DynamoDB e enviar o `taskToken` de volta para a Step Functions.
+
+---
+
+## **Step Functions**
+
+### **Definição da State Machine**
+
+```json
+{
+  "Comment": "Step Functions with Callback Pattern",
+  "StartAt": "GenerateStartTime",
+  "States": {
+    "GenerateStartTime": {
+      "Type": "Pass",
+      "Parameters": {
+        "startTime.$": "$$.State.EnteredTime"
+      },
+      "ResultPath": "$.startTimeData",
+      "Next": "MergeAttributes"
+    },
+    "MergeAttributes": {
+      "Type": "Pass",
+      "Parameters": {
+        "startTime.$": "$.startTimeData.startTime",
+        "orderId.$": "$.orderId"
+      },
+      "Next": "SendMessageToSQS"
+    },
+    "SendMessageToSQS": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sqs:sendMessage.waitForTaskToken",
+      "Parameters": {
+        "QueueUrl": "https://sqs.us-east-1.amazonaws.com/AccountID/QueueName",
+        "MessageBody": {
+          "transactionId.$": "$$.Execution.Id",
+          "taskToken.$": "$$.Task.Token",
+          "startTime.$": "$.startTime",
+          "orderId.$": "$.orderId"
+        }
+      },
+      "Next": "Pass",
+      "TimeoutSeconds": 120
+    },
+    "Pass": {
+      "Type": "Pass",
+      "End": true
+    }
+  }
+}
 ```
-It produces the `quarkus-run.jar` file in the `target/quarkus-app/` directory.
-Be aware that it’s not an _über-jar_ as the dependencies are copied into the `target/quarkus-app/lib/` directory.
-
-The application is now runnable using `java -jar target/quarkus-app/quarkus-run.jar`.
-
-If you want to build an _über-jar_, execute the following command:
-```shell script
-./mvnw package -Dquarkus.package.type=uber-jar
-```
-
-The application, packaged as an _über-jar_, is now runnable using `java -jar target/*-runner.jar`.
-
-## Creating a native executable
-
-You can create a native executable using: 
-```shell script
-./mvnw package -Pnative
-```
-
-Or, if you don't have GraalVM installed, you can run the native executable build in a container using: 
-```shell script
-./mvnw package -Pnative -Dquarkus.native.container-build=true
-```
-
-You can then execute your native executable with: `./target/lambda-approval-1.0.0-SNAPSHOT-runner`
-
-If you want to learn more about building native executables, please consult https://quarkus.io/guides/maven-tooling.
-
-## Related Guides
-
-- AWS Lambda ([guide](https://quarkus.io/guides/aws-lambda)): Write AWS Lambda functions
-- Amazon SQS ([guide](https://docs.quarkiverse.io/quarkus-amazon-services/dev/amazon-sqs.html)): Connect to Amazon SQS messaging queue service
-- Amazon DynamoDB ([guide](https://docs.quarkiverse.io/quarkus-amazon-services/dev/amazon-dynamodb.html)): Connect to Amazon DynamoDB datastore
-
-## Provided Code
-
-### Amazon Lambda Integration example
-
-This example contains a Quarkus Greeting Lambda ready for Amazon.
-
-[Related guide section...](https://quarkus.io/guides/amazon-lambda)
-
-> :warning: **INCOMPATIBLE WITH DEV MODE**: Amazon Lambda Binding is not compatible with dev mode yet!
-
