@@ -8,7 +8,7 @@ Este projeto implementa uma solução usando **AWS Step Functions**, **SQS**, **
 
 ---
 ## Diagrama
-![](../prints/human-approval-human-approval-sqs-sns.drawio.png)
+![](prints/human-approval-human-approval-sqs-sns.drawio.png)
 
 ## **Arquitetura da Solução**
 
