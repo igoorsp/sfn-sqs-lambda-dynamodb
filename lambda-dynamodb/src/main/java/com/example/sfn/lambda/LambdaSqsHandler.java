@@ -26,23 +26,21 @@ public class LambdaSqsHandler implements RequestHandler<SQSEvent, Void> {
     String dynamoDbTable;
 
     private final DynamoDbRepository dynamoDbRepository;
+    private final ObjectMapper objectMapper;
 
     @Inject
     public LambdaSqsHandler(DynamoDbRepository dynamoDbRepository) {
         this.dynamoDbRepository = dynamoDbRepository;
+        this.objectMapper = new ObjectMapper();
     }
 
     @Override
     public Void handleRequest(SQSEvent event, Context context) {
         for (SQSEvent.SQSMessage msg : event.getRecords()) {
-            LOGGER.info("Context Event: event={}, context={}", event, context);
-            LOGGER.info("Processando body da msg: body={}", msg.getBody());
             try {
-                // Parseia a mensagem
                 SqsMessage sqsMessage = parseMessage(msg.getBody());
                 LOGGER.info("Processando mensagem: TaskToken={}, Status={}", sqsMessage.getTaskToken(), sqsMessage.getStatus());
 
-                // Salva no DynamoDB
                 dynamoDbRepository.saveMessage(sqsMessage, dynamoDbTable);
                 LOGGER.info("Mensagem salva no DynamoDB com sucesso: TaskToken={}", sqsMessage.getTaskToken());
 
@@ -51,22 +49,18 @@ public class LambdaSqsHandler implements RequestHandler<SQSEvent, Void> {
                 throw new MessageProcessingException("Falha ao processar mensagem inválida", e);
             } catch (MessageProcessingException e) {
                 LOGGER.error("Erro ao processar mensagem: {}", msg.getBody(), e);
-                throw e; // Relança a exceção para falhar a execução da Lambda
+                throw e;
             }
         }
-        return null; // Retorno void, pois o sucesso é confirmado pelos logs
+        return null;
     }
 
     private SqsMessage parseMessage(String messageBody) {
-        ObjectMapper objectMapper = new ObjectMapper();
         try {
             SqsMessage message = objectMapper.readValue(messageBody, SqsMessage.class);
-
-            // Valida campos obrigatórios
-            if (message.getTaskToken() == null || message.getTransactionId() == null) {
-                throw new InvalidMessageException("Campos obrigatórios faltando: taskToken e transactionId");
+            if (message.getTaskToken() == null || message.getExecutionId() == null) {
+                throw new InvalidMessageException("Campos obrigatórios faltando: taskToken e executionId");
             }
-
             return message;
         } catch (JsonProcessingException e) {
             throw new InvalidMessageException("JSON inválido: " + messageBody, e);
