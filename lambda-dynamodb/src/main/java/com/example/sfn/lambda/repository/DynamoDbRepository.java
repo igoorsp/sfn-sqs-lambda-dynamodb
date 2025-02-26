@@ -20,12 +20,13 @@ public class DynamoDbRepository {
         this.dynamoDbClient = dynamoDbClient;
     }
 
-    public void saveMessage(final SqsMessage message, final String tableName) {
+    public void saveMessage(final SqsMessage message,
+                            final String tableName) {
         Map<String, AttributeValue> item = new HashMap<>();
 
-        item.put("orderId", AttributeValue.builder().s(message.getOrderId()).build());
-        item.put("startTime", AttributeValue.builder().s(message.getStartTime()).build());
-        item.put("transactionId", AttributeValue.builder().s(message.getTransactionId()).build());
+        item.put("businessKey", AttributeValue.builder().s(message.getBusinessKey()).build());
+        item.put("executionStartTime", AttributeValue.builder().s(message.getExecutionStartTime()).build());
+        item.put("executionId", AttributeValue.builder().s(message.getExecutionId()).build());
         item.put("taskToken", AttributeValue.builder().s(message.getTaskToken()).build());
         item.put("status", AttributeValue.builder().s("PENDING").build());
 

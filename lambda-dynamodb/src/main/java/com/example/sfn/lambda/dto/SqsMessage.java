@@ -1,6 +1,5 @@
 package com.example.sfn.lambda.dto;
 
-
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -13,9 +12,10 @@ import lombok.Setter;
 @AllArgsConstructor
 @RegisterForReflection
 public class SqsMessage {
-    private String orderId;
-    private String startTime;
-    private String transactionId;
+
+    private String businessKey;
+    private String executionStartTime;
+    private String executionId;
     private String taskToken;
     private String status;
 }
