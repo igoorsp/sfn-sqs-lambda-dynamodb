@@ -76,48 +76,72 @@ Este projeto implementa uma solução usando **AWS Step Functions**, **SQS**, **
 
 ## **Step Functions**
 
+![](prints/State-machine.png)
+
 ### **Definição da State Machine**
 
 ```json
 {
-  "Comment": "Step Functions with Callback Pattern",
-  "StartAt": "GenerateStartTime",
-  "States": {
-    "GenerateStartTime": {
-      "Type": "Pass",
-      "Parameters": {
-        "startTime.$": "$$.State.EnteredTime"
+   "Comment": "Exemplo Step Functions com Callback Pattern e condicionais",
+   "StartAt": "EnviaParaSQS",
+   "States": {
+      "EnviaParaSQS": {
+         "Type": "Task",
+         "Resource": "arn:aws:states:::sqs:sendMessage.waitForTaskToken",
+         "Parameters": {
+            "QueueUrl": "https://sqs.us-east-1.amazonaws.com/AccountID/QueueName",
+            "MessageBody": {
+               "executionId.$": "$$.Execution.Id",
+               "taskToken.$": "$$.Task.Token",
+               "executionStartTime.$": "$$.Execution.StartTime",
+               "businessKey.$": "$.businessKey"
+            }
+         },
+         "Next": "VerificaResultado",
+         "Catch": [
+            {
+               "ErrorEquals": [
+                  "States.TaskFailed"
+               ],
+               "Next": "FalhaCallback"
+            }
+         ],
+         "TimeoutSeconds": 240
       },
-      "ResultPath": "$.startTimeData",
-      "Next": "MergeAttributes"
-    },
-    "MergeAttributes": {
-      "Type": "Pass",
-      "Parameters": {
-        "startTime.$": "$.startTimeData.startTime",
-        "orderId.$": "$.orderId"
+      "VerificaResultado": {
+         "Type": "Choice",
+         "Choices": [
+            {
+               "Variable": "$.result",
+               "StringEquals": "APPROVED",
+               "Next": "Approved"
+            },
+            {
+               "Variable": "$.result",
+               "StringEquals": "REJECTED",
+               "Next": "Rejected"
+            }
+         ],
+         "Default": "NaoIdentificado"
       },
-      "Next": "SendMessageToSQS"
-    },
-    "SendMessageToSQS": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::sqs:sendMessage.waitForTaskToken",
-      "Parameters": {
-        "QueueUrl": "https://sqs.us-east-1.amazonaws.com/AccountID/QueueName",
-        "MessageBody": {
-          "transactionId.$": "$$.Execution.Id",
-          "taskToken.$": "$$.Task.Token",
-          "startTime.$": "$.startTime",
-          "orderId.$": "$.orderId"
-        }
+      "Approved": {
+         "Type": "Pass",
+         "Comment": "Trate aqui a lógica de sucesso APPROVED",
+         "End": true
       },
-      "Next": "Pass",
-      "TimeoutSeconds": 120
-    },
-    "Pass": {
-      "Type": "Pass",
-      "End": true
-    }
-  }
+      "Rejected": {
+         "Type": "Pass",
+         "Comment": "Trate aqui a lógica de REJECTED",
+         "End": true
+      },
+      "NaoIdentificado": {
+         "Type": "Fail",
+         "Cause": "Retorno não identificado"
+      },
+      "FalhaCallback": {
+         "Type": "Fail",
+         "Cause": "Falha no callback (SendTaskFailure)"
+      }
+   }
 }
 ```
