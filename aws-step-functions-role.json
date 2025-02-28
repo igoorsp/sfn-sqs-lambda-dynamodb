@@ -1,0 +1,18 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "sqs:SendMessage",
+      "Resource": "arn:aws:sqs:REGIAO:CONTA_ID:NOME_FILA"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "states:SendTaskSuccess",
+        "states:SendTaskFailure"
+      ],
+      "Resource": "arn:aws:states:REGIAO:CONTA_ID:execution:NOME_STATE_MACHINE:*"
+    }
+  ]
+}
